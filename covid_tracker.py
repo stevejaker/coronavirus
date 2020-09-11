@@ -4,27 +4,37 @@ import os
 import sys
 import random
 import requests
+import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import numpy as np
 
 class CovidTracker(object):
     """
     """
     def __init__(self, cli_args=None):
-        """
-        Default setup for
-        """
         self.base_url = "https://covidtracking.com/api/v1"
-        self.url = None
         self.data_type_list = ['state', 'national']
         self.style_options = ['default', 'seaborn']
 
-        self.delim = ','
-        self.date = "daily"
-        self.data_type = 'state'
-        self.state = 'ut'
+        self.states = [
+            'al', 'ak', 'az', 'ar', 'ca',
+            'co', 'ct', 'de', 'dc', 'fl',
+            'ga', 'hi', 'id', 'il', 'in',
+            'ia', 'ks', 'ky', 'la', 'me',
+            'md', 'ma', 'mi', 'mn', 'ms',
+            'mo', 'mt', 'ne', 'nv', 'nh',
+            'nj', 'nm', 'ny', 'nc', 'nd',
+            'oh', 'ok', 'or', 'pa', 'ri',
+            'sc', 'sd', 'tn', 'tx', 'ut',
+            'vt', 'va', 'wa', 'wv', 'wi',
+            'wy'
+        ]
+
         self.colors = {
+            "invalid_color": {
+                    "is_used": True,
+                    "color_type": "bad"
+            },
             "aqua": {
                 "is_used": False,
                 "color_type": "good"
@@ -187,7 +197,7 @@ class CovidTracker(object):
             },
             "tan": {
                 "is_used": False,
-                "color_type": "good/bad/neutral"
+                "color_type": "neutral"
             },
             "teal": {
                 "is_used": False,
@@ -223,6 +233,7 @@ class CovidTracker(object):
             }
         }
 
+
         self.loadDefaults()
         if cli_args is not None or len(cli_args) > 1:
             self.processCliArgs(cli_args)
@@ -230,6 +241,15 @@ class CovidTracker(object):
             print('Running with only Default Values')
 
     def loadDefaults(self):
+        """
+        Default setup for Tracking
+        """
+        self.url = None
+        self.date = "daily"
+        self.data_type = 'state'
+        self.state = 'ut'
+        self.delim = ','
+
         # Default Printing and Plotting Arguments
         self.plot_all = False
         self.plot = False
@@ -241,7 +261,7 @@ class CovidTracker(object):
 
         # Plotting formatting
         self.chart_title = "Utah COVID-19 Cases\nData sources: https://covidtracking.com/api (via https://coronavirus-dashboard.utah.gov/)"
-        self.y_axis_title = "Total Cases"
+        self.y_axis_title = "Total"
         self.x_axis_title = "Date"
         self.legend_location = "upper left"
         self.style = 'default'
@@ -452,18 +472,33 @@ class CovidTracker(object):
             if arg in ['-h', '--help']: # Prints this message and exits
                 self.help()
 
+            elif arg in ['-E', '--export-data']:
+                self.exportData()
+
             elif arg in ['-all', '--printall']: # Prints all data
                 self.print_all = True
 
-            elif arg in ['-p', '--plot']:
+            elif arg in ['-p', '--plot']: #NOT FUNCTIONAL
                 print("Non Functional, Yo...")
                 opt = cli_args[i+1].lower()
                 if opt == '':
                     pass
 
-            elif '--plot=' in arg or '--print=' in arg: # Toggles custom plotting.
+            elif arg in ["-st",  "--stack"]: # Toggles whether to stack bar graphs
+                print("Non Functional")
+                pass
+
+            elif '--plot=' in arg or '--cplot=' in arg or '--print=' in arg: # Toggles custom plotting
                 bottom = None
-                typ = "print" if "print" in arg else "plot"
+                color = None
+                cplot = False
+                if "print" in arg:
+                    typ = "print"
+                elif "cplot" in arg:
+                    cplot = True
+                    typ = "plot"
+                else:
+                    typ = "plot"
                 if typ == "print":
                     self.print = True
                 else:
@@ -476,7 +511,9 @@ class CovidTracker(object):
                     opts = [opts]
                 for opt in opts:
                     # Adding colors is not set up quite yet
-                    self.processFlag(opt, typ, color=None)
+                    if cplot:
+                        opt, color = opt.strip().split(":")
+                    self.processFlag(opt, typ, color=color)
                     # if self.stack_bars:
                     #     if bottom is not None:
                     #         bottom = f", {opt}"
@@ -492,7 +529,7 @@ class CovidTracker(object):
                 except:
                     sys.exit(f"ERROR with `{arg}`: {val} is not a valid integer.")
 
-            elif arg in ['-nd', '--num_dates']: # Declares the number of dates to print on plot
+            elif arg in ['-nd', '--num-dates']: # Declares the number of dates to print on plot
                 try:
                     self.num_dates = int(cli_args[i+1])
                 except:
@@ -503,6 +540,9 @@ class CovidTracker(object):
 
             elif arg in ['-S', '--state']: # Declares state (Default: 'UT')
                 self.state = cli_args[i+1].lower()
+
+            elif arg in ['-mt', '--main-title']: # Declares Main Graph Title (Put in quotes)
+                self.y_axis_title = cli_args[i+1]
 
             elif arg in ['-yt', '--y-title']: # Declares Y Axis Title
                 self.y_axis_title = cli_args[i+1]
@@ -647,7 +687,7 @@ class CovidTracker(object):
     def generateUrl(self, format='json'): #DONE
         # Comment Line
         if self.data_type == 'national':
-            self.url = f"{self.base_url}/us/{self.date}.{self.format}"
+            self.url = f"{self.base_url}/us/{self.date}.{format}"
         else:
             self.url = f"{self.base_url}/states/{self.state}/{self.date}.{format}"
 
@@ -734,7 +774,7 @@ class CovidTracker(object):
     def setIndexValues(self): #DONE
         self.index_vals = [x for x, _ in enumerate(self.data["dates"]["data"])]
 
-    def addBar(self, data, label, color, bottom):
+    def addBar(self, data, label, color, bottom): #DONE
         plt.bar(self.index_vals, data, width=self.width, label=label, color=color, bottom=bottom)
 
     def plotData(self): #DONE?
@@ -747,6 +787,9 @@ class CovidTracker(object):
             if data["is_plottable"] and data["plot"]:
                 # Plot data
                 color = data["color"]
+                if color not in self.colors:
+                    print(f"`{color}` is an invalid color. Generating random color.")
+                    color = "invalid_color"
                 if not self.colors[color]["is_used"]:
                     self.setColorAsUsed(color)
                 else:
@@ -761,6 +804,7 @@ class CovidTracker(object):
         plt.show()
 
     def printData(self): # NOT FUNCTIONAL
+
         for kwd, data in self.data.items():
             if data["is_printable"] and data["print"]:
                 # Print Data
@@ -769,13 +813,38 @@ class CovidTracker(object):
 
     def run(self):
         self.generateUrl()
-        json_data = Tracker.makeRequest()
+        json_data = self.makeRequest()
         self.parse(json_data)
         self.applyModifier()
         if self.plot:
             self.plotData()
         if self.print:
             self.printData()
+
+    def exportData(self): #DONE
+        sys.exit(f"""Printing Default Variables for CovidTracker
+
+base_url -- '{self.base_url}'
+url -- '{self.url}'
+delim -- '{self.delim}'
+date -- '{self.date}'
+data_type -- '{self.data_type}'
+state -- '{self.state}'
+plot_all -- '{self.plot_all}'
+plot -- '{self.plot}'
+print_all -- '{self.print_all}'
+print -- '{self.print}'
+chart_title -- '{self.chart_title}'
+y_axis_title -- '{self.y_axis_title}'
+x_axis_title -- '{self.x_axis_title}'
+legend_location -- '{self.legend_location}'
+style -- '{self.style}'
+width -- '{self.width}'
+num_dates -- '{self.num_dates}'
+length -- '{self.length}'
+height -- '{self.height}'
+figsize -- '{"x".join([str(i) for i in self.figsize])}'
+""")
 
     def help(self):
         """
@@ -791,29 +860,32 @@ Usage:
 
 Help:
     -h,  --help                   Prints this message and exits
+    -E,  --export-defaults        Prints all Defaults and exits
 
 Options:
     -all, --printall              Prints all data
     -dt,  --data-type             Declares whether you want state/national data
     -d,   --date                  Declares the specific date
     -df,  --date-format           Declares the date format (Default: YYYYDDMM)
-    -nd,  --num_dates             Declares the number of dates to print on plot
+    -nd,  --num-dates             Declares the number of dates to print on plot
     -l,   --last                  Declares the last # of data points to print
     -p,   --plot                  Sets to plot the data in a bar graph
     -S,   --state                 Declares state (Default: 'UT')
     -xy,  --size                  Declares length & height of the graph window
-        Required Format:          `length`x`height` where length & height are
+    Required Format:             `length`x`height` where length & height are
                                   integers. Default is (12x6)
 
 Advanced Plotting:
     -st,  --stack                 Toggles whether to stack bar graphs
     -L,   --legend                Declares the Graph's legend location
-    -yt,  --y-title               Declares y Axis Title
+    -mt,  --main-title            Declares Main Graph Title (Put in quotes)
+    -yt,  --y-title               Declares Y Axis Title
     -xt,  --x-title               Declares X Axis Title
     -s,   --style                 Declares the style of the graph
     -w,   --width                 Declares width of the bar graphs
     -D,   --delim                 Sets custom delimiter (Default ',')
     --plot=<options>              Toggles custom plotting.
+    --cplot=<option:color>      Toggles custom plotting and colors.
     Options Include:
         ac, active_cases          ng, negative
         ch, hospitalized          th, total_hospitalized
